@@ -1,21 +1,21 @@
 ARG WORDPRESS_VERSION=latest
-ARG PHP_VERSION=8.3
+ARG PHP_VERSION=8.4.13
 ARG USER=www-data
 
 
 
-FROM dunglas/frankenphp:latest-builder-php${PHP_VERSION} as builder
+FROM dunglas/frankenphp:builder-php$PHP_VERSION AS builder
 
 # Copy xcaddy in the builder image
 COPY --from=caddy:builder /usr/bin/xcaddy /usr/bin/xcaddy
 
-
-# CGO must be enabled to build FrankenPHP
-ENV CGO_ENABLED=1 XCADDY_SETCAP=1 XCADDY_GO_BUILD_FLAGS='-ldflags="-w -s" -trimpath'
-
 COPY ./sidekick/middleware/cache ./cache
 
-RUN xcaddy build \
+RUN CGO_ENABLED=1 \
+    XCADDY_GO_BUILD_FLAGS="-ldflags='-w -s' -tags=nobadger,nomysql,nopgx" \
+    CGO_CFLAGS=$(php-config --includes) \
+    CGO_LDFLAGS="$(php-config --ldflags) $(php-config --libs)" \
+    xcaddy build \
     --output /usr/local/bin/frankenphp \
     --with github.com/dunglas/frankenphp=./ \
     --with github.com/dunglas/frankenphp/caddy=./caddy/ \
@@ -24,8 +24,8 @@ RUN xcaddy build \
     --with github.com/stephenmiracle/frankenwp/sidekick/middleware/cache=./cache
 
 
-FROM wordpress:$WORDPRESS_VERSION as wp
-FROM dunglas/frankenphp:latest-php${PHP_VERSION} AS base
+FROM wordpress:$WORDPRESS_VERSION AS wp
+FROM dunglas/frankenphp:latest AS base
 
 LABEL org.opencontainers.image.title=FrankenWP
 LABEL org.opencontainers.image.description="Optimized WordPress containers to run everywhere. Built with FrankenPHP & Caddy."
@@ -44,20 +44,22 @@ ENV PHP_INI_SCAN_DIR=$PHP_INI_DIR/conf.d
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    ghostscript \
     curl \
-    libonig-dev \
-    libxml2-dev \
+    ghostscript \
+    git \
     libcurl4-openssl-dev \
+    libjpeg-dev \
+    libmemcached-dev \
+    libnss3-tools \
+    libonig-dev \
     libssl-dev \
+    libwebp-dev \
+    libxml2-dev \
+    libzip-dev \
     libzip-dev \
     unzip \
-    git \
-    libjpeg-dev \
-    libwebp-dev \
-    libzip-dev \
-    libmemcached-dev \
-    zlib1g-dev
+    zlib1g-dev \
+    && apt-get clean
 
 
 # install the PHP extensions we need (https://make.wordpress.org/hosting/handbook/handbook/server-environment/#php-extensions)
