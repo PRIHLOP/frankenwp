@@ -25,7 +25,7 @@ RUN CGO_ENABLED=1 \
 
 
 FROM wordpress:$WORDPRESS_VERSION AS wp
-FROM dunglas/frankenphp:latest AS base
+FROM dunglas/frankenphp:php$PHP_VERSION AS base
 
 LABEL org.opencontainers.image.title=FrankenWP
 LABEL org.opencontainers.image.description="Optimized WordPress containers to run everywhere. Built with FrankenPHP & Caddy."
