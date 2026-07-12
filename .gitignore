@@ -1,2 +1,4 @@
 .tmp
 .air.toml
+examples/**/wp-content
+examples/**/wp-database

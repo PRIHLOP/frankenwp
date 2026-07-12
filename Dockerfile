@@ -1,5 +1,5 @@
 ARG WORDPRESS_VERSION=latest
-ARG PHP_VERSION=8.4.13
+ARG PHP_VERSION=8.4
 ARG USER=www-data
 
 
@@ -113,8 +113,8 @@ WORKDIR /var/www/html
 VOLUME /var/www/html/wp-content
 
 
-COPY wp-content/mu-plugins /var/www/html/wp-content/mu-plugins
-RUN mkdir /var/www/html/wp-content/cache
+COPY wp-content/mu-plugins /usr/src/wordpress/wp-content/mu-plugins
+RUN mkdir -p /usr/src/wordpress/wp-content/cache
 
 
 
