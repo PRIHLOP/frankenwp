@@ -5,8 +5,6 @@ An enterprise-grade WordPress image built for scale. It uses the new FrankenPHP 
 ## Getting Started
 
 - [Docker Images](https://hub.docker.com/r/wpeverywhere/frankenwp "Docker Hub")
-- [Slack](https://join.slack.com/t/wpeverywhere/shared_invite/zt-2k88x3jtv-dpJHRYJ2IDT9PNQpO96zxQ "Slack")
-- [Website](https://wpeverywhere.com)
 
 ### Examples
 
@@ -85,6 +83,6 @@ Working in cloud environments like AWS can be tricky because your traffic is goi
 What about SSL cert? Use `SERVER_NAME=mydomain.com, :80`
 Caddy, the underlying application server is flexible enough for multiple entries. Separate multiple values with a comma. It will still request certificate.
 
-## Using in Real Projects? Join the Chat
+## License
 
-You can join our Slack chat to ask questions or connect directly. [Connect on Slack](https://join.slack.com/t/wpeverywhere/shared_invite/zt-2k88x3jtv-dpJHRYJ2IDT9PNQpO96zxQ)
+This project is licensed under the [MIT License](./LICENSE).
