@@ -1,7 +1,13 @@
 services:
   wordpress:
-    build: .
-    restart: always
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        WORDPRESS_VERSION: ${WORDPRESS_VERSION:-latest}
+        PHP_VERSION: ${PHP_VERSION:-8.4}
+        FRANKENPHP_VERSION: ${FRANKENPHP_VERSION:-1.13.2}
+    restart: unless-stopped
     ports:
       - "8099:80" # HTTP
     environment:
@@ -31,7 +37,6 @@ services:
     volumes:
       - ./test.php:/var/www/html/test.php
       - ./wp-content:/var/www/html/wp-content
-
     depends_on:
       - db
     tty: true
