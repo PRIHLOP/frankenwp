@@ -14,6 +14,17 @@ An enterprise-grade WordPress image built for scale. It uses the new FrankenPHP 
 
 ## Whats Included
 
+### Build Arguments
+
+- `FRANKENPHP_VERSION`: the FrankenPHP release to build on. Defaults to `1.13.2`, which is
+  the first release that ships the fixes for PHP2Shell (`CVE-2026-109618` / `CVE-2026-109619`,
+  unauthenticated RCE) and for the FrankenPHP advisories `GHSA-ccgp-ch9h-533f`,
+  `GHSA-4gfw-9v29-gp9h`, `GHSA-fq24-r53r-xcx3` and `GHSA-6q3j-62j9-f9hh`. The build fails
+  if the resolved base image is older than `1.13.2`.
+- `PHP_VERSION`: the PHP version of the base image. Defaults to `8.4`.
+- `WORDPRESS_VERSION`: the WordPress version of the base image. Defaults to `latest`.
+- `USER`: the unprivileged user the server runs as. Defaults to `www-data`.
+
 ### Services
 
 - [WordPress](https://hub.docker.com/_/wordpress "WordPress Docker Image")
@@ -37,7 +48,7 @@ An enterprise-grade WordPress image built for scale. It uses the new FrankenPHP 
 
 - `CACHE_LOC`: Where to store cache. Defaults to /var/www/html/wp-content/cache
 - `CACHE_RESPONSE_CODES`: Which status codes to cache. Defaults to 200,404,405
-- `BYPASS_PATH_PREFIX`: Which path prefixes to not cache. Defaults to /wp-admin,/wp-json
+- `BYPASS_PATH_PREFIXES`: Which path prefixes to not cache. Defaults to /wp-admin,/wp-json
 - `BYPASS_HOME`: Whether to skip caching home. Defaults to false.
 - `PURGE_KEY`: Create a purge key that must be validated on purge requests. Helps to prevent malicious intent. No default.
 - `PURGE_PATH`: Create a custom route for the cache purge API path. Defaults to /\_\_cache/purge.
