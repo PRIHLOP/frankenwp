@@ -1,5 +1,5 @@
 ARG WORDPRESS_VERSION=latest
-ARG PHP_VERSION=8.4
+ARG PHP_VERSION=8.5
 # FrankenPHP 1.13.2 is the first release that ships the fixes for PHP2Shell
 # (CVE-2026-109618 / CVE-2026-109619 - unauthenticated RCE) and for the
 # FrankenPHP advisories GHSA-ccgp-ch9h-533f, GHSA-4gfw-9v29-gp9h,
@@ -8,7 +8,6 @@ ARG PHP_VERSION=8.4
 # older than 1.13.2 - the build fails below if the base image is too old.
 ARG FRANKENPHP_VERSION=1.13.2
 ARG USER=www-data
-
 
 
 FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-builder-php$PHP_VERSION AS builder
@@ -32,120 +31,164 @@ RUN set -eux; \
         exit 1; \
     fi
 
-# Copy xcaddy in the builder image
-COPY --from=caddy:builder /usr/bin/xcaddy /usr/bin/xcaddy
+WORKDIR /go/src/app
 
 COPY ./sidekick/middleware/cache ./cache
-COPY ./sidekick/middleware/cache/fetch-go-modules.sh /usr/local/bin/fetch-go-modules.sh
-RUN chmod +x /usr/local/bin/fetch-go-modules.sh
+COPY ./sidekick/frankenphp_imports.go ./caddy/frankenphp/zz_frankenwp_imports.go
 
-# GOSUMDB=off avoids failing on transient sum.golang.org resets; the module
-# versions are still pinned by the go.sum shipped in the builder image.
-#
-# The Go proxy sometimes resets the connection while downloading the larger
-# module archives, and Go does not retry a half-written archive. The build is
-# therefore retried, and the archive of every module that failed to download
-# is re-fetched with range requests before the next attempt.
-RUN set -eu; \
-    for attempt in 1 2 3 4 5 6 7 8; do \
-        build_log="/tmp/xcaddy-build.log"; \
-        if CGO_ENABLED=1 \
-            GOFLAGS="-mod=mod" \
-            GOSUMDB=off \
-            XCADDY_GO_BUILD_FLAGS="-ldflags='-w -s' -tags=nobadger,nomysql,nopgx" \
-            CGO_CFLAGS="$(php-config --includes)" \
-            CGO_LDFLAGS="$(php-config --ldflags) $(php-config --libs)" \
-            xcaddy build \
-            --output /usr/local/bin/frankenphp \
-            --with github.com/dunglas/frankenphp=./ \
-            --with github.com/dunglas/frankenphp/caddy=./caddy/ \
-            --with github.com/dunglas/caddy-cbrotli \
-            # Add extra Caddy modules here
-            --with github.com/prihlop/frankenwp/sidekick/middleware/cache=./cache > "$build_log" 2>&1; then \
-            cat "$build_log"; \
-            break; \
-        fi; \
-        cat "$build_log"; \
-        if [ "$attempt" = "8" ]; then \
-            echo "ERROR: xcaddy build failed after ${attempt} attempts"; \
-            exit 1; \
-        fi; \
-        echo ">>> xcaddy build failed (attempt ${attempt}), re-fetching the modules that could not be downloaded"; \
-        fetch_args=""; \
-        for mv in $(grep -oE '[a-zA-Z0-9._~/-]+@v[0-9][a-zA-Z0-9.+-]*: (read|Get) "https://proxy\.golang\.org/' "$build_log" \
-            | sed -E 's/: (read|Get) "https:\/\/proxy\.golang\.org\// /' \
-            | tr ' ' '\n' | grep '@' | sort -u); do \
-            fetch_args="${fetch_args} ${mv%@*} ${mv#*@}"; \
-        done; \
-        if [ -n "$fetch_args" ]; then \
-            # shellcheck disable=SC2086 \
-            fetch-go-modules.sh $fetch_args || true; \
-        fi; \
-        sleep 3; \
-    done; \
-    /usr/local/bin/frankenphp version
+# CGO is required: FrankenPHP embeds the PHP runtime.
+ENV CGO_ENABLED=1 \
+    GOSUMDB=off
+
+RUN set -eux; \
+    cd /go/src/app/caddy; \
+    # Point the build at the local sources instead of the module proxy.
+    go mod edit \
+        -replace github.com/dunglas/frankenphp=/go/src/app \
+        -replace github.com/dunglas/frankenphp/caddy=/go/src/app/caddy \
+        -replace github.com/prihlop/frankenwp/sidekick/middleware/cache=/go/src/app/cache; \
+    go mod edit \
+        -require=github.com/prihlop/frankenwp/sidekick/middleware/cache@v0.0.0; \
+    cd /go/src/app/caddy/frankenphp; \
+    CGO_CFLAGS="$(php-config --includes)" \
+    CGO_LDFLAGS="$(php-config --ldflags) $(php-config --libs)" \
+    go build \
+        -ldflags="-w -s" \
+        -tags=nobadger,nomysql,nopgx \
+        -o /usr/local/bin/frankenphp .; \
+    # Fail the build if the custom modules did not make it into the binary.
+    # The module list is captured first: piping it straight into "grep -q"
+    # makes grep close the pipe early, which kills the producer with SIGPIPE
+    # and fails the build under "set -o pipefail".
+    modules="$(/usr/local/bin/frankenphp list-modules)"; \
+    echo "$modules" | grep -q 'http.handlers.wp_cache'; \
+    echo "$modules" | grep -q 'http.encoders.br'; \
+    # Caddy needs the capability to bind to port 80/443. It is set here so
+    # that the final stage can copy the binary without losing the capability.
+    setcap CAP_NET_BIND_SERVICE=+eip /usr/local/bin/frankenphp; \
+    getcap /usr/local/bin/frankenphp
+
+
+FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php$PHP_VERSION AS ext
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        libicu-dev \
+        libjpeg-dev \
+        libmagickwand-dev \
+        libonig-dev \
+        libwebp-dev \
+        libxml2-dev \
+        libzip-dev \
+        zlib1g-dev; \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+
+RUN set -eux; \
+    install-php-extensions \
+        bcmath \
+        exif \
+        gd \
+        intl \
+        mysqli \
+        zip \
+        imagick/imagick@3.8.1 \
+        opcache; \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/*
+
+RUN set -eux; \
+    cd /usr/local/lib/php/extensions/*/; \
+    for so in *.so; do ldd "$so" 2>/dev/null; done \
+        | grep -oE '/[^ ]+\.so[^ ]*' | sort -u \
+        | while read -r lib; do readlink -f "$lib"; done | sort -u > /tmp/libs.txt; \
+    : > /tmp/packages.txt; \
+    while read -r lib; do \
+        dpkg -S "$lib" 2>/dev/null \
+            | grep -E '^[a-z0-9][^ ]*: ' | head -n1 | cut -d: -f1 \
+            >> /tmp/packages.txt || true; \
+    done < /tmp/libs.txt; \
+    grep -v -- '-dev$' /tmp/packages.txt | sort -u > /tmp/runtime-packages.txt; \
+    cat /tmp/runtime-packages.txt | tr '\n' ' '; echo
 
 
 FROM wordpress:$WORDPRESS_VERSION AS wp
 FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php$PHP_VERSION AS base
 
+ARG USER=www-data
+
 LABEL org.opencontainers.image.title=FrankenWP
 LABEL org.opencontainers.image.description="Optimized WordPress containers to run everywhere. Built with FrankenPHP & Caddy."
-LABEL org.opencontainers.image.url=https://wpeverywhere.com
-LABEL org.opencontainers.image.source=https://github.com/StephenMiracle/frankenwp
+LABEL org.opencontainers.image.source=https://github.com/prihlop/frankenwp
 LABEL org.opencontainers.image.licenses=MIT
-LABEL org.opencontainers.image.vendor="Stephen Miracle"
+LABEL org.opencontainers.image.vendor="PRIHLOP"
 
 
-# Replace the official binary by the one contained your custom modules
-COPY --from=builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
+# Replace the official binary by the one contained your custom modules.
+#
+# The capability to bind to port 80/443 is set on the binary in the builder
+# stage already. A plain COPY would drop the file capabilities, and a
+# "setcap" afterwards would copy the whole 58 MB binary into a second layer.
+# Copying through a bind mount with "cp --preserve=xattr" keeps the
+# capabilities and avoids the duplicate layer.
+RUN --mount=from=builder,source=/usr/local/bin/frankenphp,target=/tmp/frankenphp \
+    cp --preserve=xattr,mode /tmp/frankenphp /usr/local/bin/frankenphp && \
+    getcap /usr/local/bin/frankenphp
 ENV WP_DEBUG=${DEBUG:+1}
 ENV FORCE_HTTPS=0
 ENV PHP_INI_SCAN_DIR=$PHP_INI_DIR/conf.d
 
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        ghostscript \
+        git \
+        libnss3-tools \
+        unzip; \
+    apt-get purge -y --auto-remove \
+        libcurl4-openssl-dev \
+        libjpeg-dev \
+        libmemcached-dev \
+        libonig-dev \
+        libssl-dev \
+        libwebp-dev \
+        libxml2-dev \
+        libzip-dev \
+        zlib1g-dev; \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
+    # The toolchain that the base image ships for compiling extensions is not
+    # needed at runtime either.
+    apt-get purge -y --auto-remove \
+        autoconf \
+        bzip2 \
+        dpkg-dev \
+        file \
+        g++ \
+        gcc \
+        libc-dev-bin \
+        libc6-dev \
+        libgcc-14-dev \
+        make \
+        pkg-config \
+        re2c \
+        xz-utils; \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-# The apt archives are removed right after the install: they are large and the
-# layer is kept in the build cache, so leaving them behind bloats the image
-# and the disk usage of every subsequent build.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    ghostscript \
-    git \
-    libcurl4-openssl-dev \
-    libjpeg-dev \
-    libmemcached-dev \
-    libnss3-tools \
-    libonig-dev \
-    libssl-dev \
-    libwebp-dev \
-    libxml2-dev \
-    libzip-dev \
-    libzip-dev \
-    unzip \
-    zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
-
-
-# install the PHP extensions we need (https://make.wordpress.org/hosting/handbook/handbook/server-environment/#php-extensions)
-RUN install-php-extensions \
-    bcmath \
-    exif \
-    gd \
-    intl \
-    mysqli \
-    zip \
-    # See https://github.com/Imagick/imagick/issues/640#issuecomment-2077206945
-    imagick/imagick@master \
-    opcache \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/*
-
+COPY --from=ext /usr/local/lib/php/extensions /usr/local/lib/php/extensions
+COPY --from=ext /usr/local/etc/php/conf.d /usr/local/etc/php/conf.d/
+COPY --from=ext /tmp/runtime-packages.txt /tmp/runtime-packages.txt
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        $(tr '\n' ' ' < /tmp/runtime-packages.txt); \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
+    rm -f /tmp/runtime-packages.txt
 
 RUN cp $PHP_INI_DIR/php.ini-production $PHP_INI_DIR/php.ini
 COPY php.ini $PHP_INI_DIR/conf.d/wp.ini
 
 COPY --from=wp /usr/src/wordpress /usr/src/wordpress
-COPY --from=wp /usr/local/etc/php/conf.d /usr/local/etc/php/conf.d/
 COPY --from=wp /usr/local/bin/docker-entrypoint.sh /usr/local/bin/
 
 
@@ -176,8 +219,9 @@ RUN { \
 
 WORKDIR /var/www/html
 
+RUN mkdir -p /var/www/html/wp-content && \
+    chown ${USER}:${USER} /var/www/html/wp-content
 VOLUME /var/www/html/wp-content
-
 
 COPY wp-content/mu-plugins /usr/src/wordpress/wp-content/mu-plugins
 RUN mkdir -p /usr/src/wordpress/wp-content/cache
@@ -219,9 +263,14 @@ RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli
 
 COPY Caddyfile /etc/caddy/Caddyfile
 
-# Caddy requires an additional capability to bind to port 80 and 443
-RUN useradd -D ${USER} && \
-    setcap CAP_NET_BIND_SERVICE=+eip /usr/local/bin/frankenphp
+# Caddy requires an additional capability to bind to port 80 and 443.
+#
+# The base image already ships the www-data user, so it is only created when
+# it is missing (a custom USER build arg may point at a different account).
+RUN set -eux; \
+    if ! id -u ${USER} >/dev/null 2>&1; then \
+        useradd --create-home --shell /usr/sbin/nologin ${USER}; \
+    fi
 
 # Caddy requires write access to /data/caddy and /config/caddy
 RUN chown -R ${USER}:${USER} /data/caddy && \
