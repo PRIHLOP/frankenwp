@@ -115,6 +115,10 @@ FROM wordpress:$WORDPRESS_VERSION AS wp
 FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php$PHP_VERSION AS base
 
 ARG USER=www-data
+# Declared so that the WP_DEBUG line below does not trigger the
+# "undefined variable" warning of the Dockerfile linter. The behaviour is
+# unchanged: WP_DEBUG is only set when the build arg DEBUG is given.
+ARG DEBUG
 
 LABEL org.opencontainers.image.title=FrankenWP
 LABEL org.opencontainers.image.description="Optimized WordPress containers to run everywhere. Built with FrankenPHP & Caddy."
