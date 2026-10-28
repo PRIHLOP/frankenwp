@@ -65,7 +65,6 @@ jobs:
           cache-to: type=gha,mode=max,scope=php${{ matrix.php }}
           build-args: |
             PHP_VERSION=${{ matrix.php }}
-            FRANKENPHP_VERSION=${{ vars.FRANKENPHP_VERSION || '1.13.2' }}
 
       # Verify that the built image actually works, not just that it builds.
       - name: Smoke test the image
