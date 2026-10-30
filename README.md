@@ -16,14 +16,36 @@ An enterprise-grade WordPress image built for scale. It uses the new FrankenPHP 
 
 ### Build Arguments
 
-- `FRANKENPHP_VERSION`: the FrankenPHP release to build on. Defaults to `1.13.2`, which is
-  the first release that ships the fixes for PHP2Shell (`CVE-2026-109618` / `CVE-2026-109619`,
+- `FRANKENPHP_VERSION`: the FrankenPHP release to build on, pinned in [Dockerfile](./Dockerfile).
+  The minimum supported version is `1.13.2`, the first release that ships the fixes for PHP2Shell (`CVE-2026-109618` / `CVE-2026-109619`,
   unauthenticated RCE) and for the FrankenPHP advisories `GHSA-ccgp-ch9h-533f`,
   `GHSA-4gfw-9v29-gp9h`, `GHSA-fq24-r53r-xcx3` and `GHSA-6q3j-62j9-f9hh`. The build fails
   if the resolved base image is older than `1.13.2`.
 - `PHP_VERSION`: the PHP version of the base image. Defaults to `8.4`.
 - `WORDPRESS_VERSION`: the WordPress version of the base image. Defaults to `latest`.
 - `USER`: the unprivileged user the server runs as. Defaults to `www-data`.
+
+### Automatic FrankenPHP updates
+
+The `Update FrankenPHP` workflow checks the latest stable GitHub release daily at
+06:17 UTC and can also be started from **Actions → Update FrankenPHP → Run workflow**.
+It proposes upgrades only, skips prereleases, and creates or updates a single PR
+on `automation/update-frankenphp`. Merging remains manual.
+
+The Dockerfile is the source of the version for all CI builds; the repository
+variable `FRANKENPHP_VERSION` is no longer used. Local builds can still override it
+with `--build-arg FRANKENPHP_VERSION=...`. The security floor stays at `1.13.2`.
+
+To enable PR creation, merge the workflow into the default branch and enable
+**Settings → Actions → General → Workflow permissions → Allow GitHub Actions to
+create and approve pull requests**.
+
+For automatic PR build and smoke-test runs, add the repository secret
+`FRANKENPHP_UPDATE_TOKEN`: a fine-grained personal access token with **Contents**
+and **Pull requests** read/write access to this repository. Without this secret,
+the workflow uses `GITHUB_TOKEN` and still creates PRs, but GitHub does not trigger
+PR workflows for those events. Close and reopen such a PR manually to start checks.
+See the [action's token documentation](https://github.com/peter-evans/create-pull-request#token).
 
 ### Services
 
