@@ -1,4 +1,4 @@
-name: Update FrankenPHP
+name: Update FrankenPHP Docker image version
 
 on:
   schedule:
