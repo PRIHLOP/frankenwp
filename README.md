@@ -6,6 +6,23 @@ An enterprise-grade WordPress image built for scale. It uses the new FrankenPHP 
 
 - [Docker Images](https://hub.docker.com/r/prihlop/frankenwp "Docker Hub")
 
+### Image tags
+
+Images are published per PHP version, and each one carries two tags:
+
+| Tag | Example | Notes |
+| --- | --- | --- |
+| `latest-php<php>` | `latest-php8.4` | Moves with every rebuild (scheduled and on `main`). |
+| `<frankenphp>-php<php>` | `1.13.6-php8.4` | Immutable: names the exact FrankenPHP release inside the image. |
+
+Use the `latest-` tag to stay current, and the versioned tag when you need a
+reproducible image — for example to pin a deployment to a known-good
+FrankenPHP build or to roll back a single server upgrade. The version in the
+tagged name matches the `FRANKENPHP_VERSION` pin in [Dockerfile](./Dockerfile),
+so it advances only when that pin does (see
+[Automatic FrankenPHP updates](#automatic-frankenphp-updates)). Release tags
+(`v*.*.*` pushes) additionally get the semver-based tags.
+
 ### Examples
 
 - [Standard environment with MariaDB & Docker Compose](./examples/basic/compose.yaml)
