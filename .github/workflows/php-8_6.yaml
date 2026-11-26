@@ -84,6 +84,7 @@ jobs:
           build-args: |
             PHP_VERSION=8.6
             FRANKENPHP_VERSION=${{ steps.frankenphp.outputs.version }}
+            IMAGICK_VERSION=55ed2e9fda264395636a2e27e51f31673f5566ab
 
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
@@ -104,3 +105,4 @@ jobs:
           build-args: |
             PHP_VERSION=8.6
             FRANKENPHP_VERSION=${{ steps.frankenphp.outputs.version }}
+            IMAGICK_VERSION=55ed2e9fda264395636a2e27e51f31673f5566ab

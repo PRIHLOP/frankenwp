@@ -7,6 +7,7 @@ ARG PHP_VERSION=8.5
 # Override with --build-arg FRANKENPHP_VERSION=... , but never with a version
 # older than 1.13.2 - the build fails below if the base image is too old.
 ARG FRANKENPHP_VERSION=1.14.0
+ARG IMAGICK_VERSION=3.8.1
 ARG USER=www-data
 
 
@@ -71,6 +72,11 @@ RUN set -eux; \
 
 FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php$PHP_VERSION AS ext
 
+# ARGs declared before the first FROM are only available to FROM lines; each
+# stage that consumes one has to re-declare it. Without this the RUN below
+# aborts with "IMAGICK_VERSION: parameter not set".
+ARG IMAGICK_VERSION
+
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -92,7 +98,7 @@ RUN set -eux; \
         intl \
         mysqli \
         zip \
-        imagick/imagick@3.8.1 \
+        "imagick/imagick@${IMAGICK_VERSION}" \
         opcache; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/*
 
